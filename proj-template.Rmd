@@ -63,6 +63,26 @@ Load data, explore data, etc.
 ```{r load-packages, warning=FALSE, message=FALSE}
 # Load Required Packages
 library(tidyverse)
+library(readr)
+
+data = read_csv('HaitiPixels.csv')
+attach(data)
+data
+
+ggplot(data, aes(x=factor(Class), y=Blue)) + 
+  geom_boxplot(fill="orange", color="blue") + 
+  labs(x="Class", y="Blue")
+
+ggplot(data, aes(x=factor(Class), yinsta=Red)) + 
+  geom_boxplot(fill="orange", color="blue") + 
+  labs(x="Class", y="Red")
+
+ggplot(data, aes(x=factor(Class), y=Green)) + 
+  geom_boxplot(fill="orange", color="blue") + 
+  labs(x="Class", y="Green")
+
+
+
 ```
 
 
@@ -70,9 +90,49 @@ library(tidyverse)
 
 ## Set-up 
 
+
+
+
 ## Logistic Regression
 
+
+
+
+
 ## LDA
+
+```{r LDA}
+set.seed(17)
+#train
+
+#lda.fit <- lda(Class~Red+Blue+Green, data=data, subset=train)
+#lda.fit
+
+
+kfolds_lda.fit <- function(p, data, kfolds) {
+  mod_form <- paste0("Class~Red+Blue+Green")        
+  caret::train(as.formula(mod_form), data=data, trControl=kfolds, method="lda")
+}
+
+
+train_control <- caret::trainControl(method="cv", number=10, 
+                                     savePredictions=TRUE)
+models <- purrr::set_names(as.character(1:1)) %>% 
+  purrr::map(kfolds_lda.fit, data, train_control)
+models
+
+purrr::map(models, (function(x) x$resample))
+
+library(klaR)
+partimat(Class ~ ., data = data, method = "lda", plot.matrix = TRUE, col.correct='green', col.wrong='red')
+
+
+```
+
+
+
+
+
 
 ## QDA
 
