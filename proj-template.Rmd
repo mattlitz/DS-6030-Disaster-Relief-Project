@@ -65,8 +65,13 @@ Load data, explore data, etc.
 library(tidyverse)
 library(readr)
 
-data = read_csv('HaitiPixels.csv')
+data <- read_csv('HaitiPixels.csv')
 attach(data)
+
+data <- data %>% 
+  mutate(BlueTarp = if_else(Class == "Blue Tarp", 1, 0))
+
+
 data
 
 ggplot(data, aes(x=factor(Class), y=Blue)) + 
@@ -77,7 +82,7 @@ ggplot(data, aes(x=factor(Class), yinsta=Red)) +
   geom_boxplot(fill="orange", color="blue") + 
   labs(x="Class", y="Red")
 
-ggplot(data, aes(x=factor(Class), y=Green)) + 
+ggplot(data, aes(x=factor(Class), y=BlueTarp)) + 
   geom_boxplot(fill="orange", color="blue") + 
   labs(x="Class", y="Green")
 
@@ -88,12 +93,55 @@ ggplot(data, aes(x=factor(Class), y=Green)) +
 
 # Model Training
 
-## Set-up 
+## Set-up
+```{r setup, echo=FALSE, message=FALSE}
+library(broom)
+library(tidymodels)
+library(randomForest)
+library(klaR)
+library(caret)
+library(glmnet)
+library(class)
+
+#Create training and test splits
+train.rows <- sample(rownames(data), dim(data)[1]*0.6)
+
+train <- data[train.rows, ]
+test <- data[setdiff(rownames(data), train.rows), ]
+c(dim(train)[1], dim(test)[1])
 
 
+```
 
 
 ## Logistic Regression
+
+```{r logistic, echo=TRUE, collapse = TRUE}
+
+#train$Class = as.factor(train$Class)
+#levels(train$Class) <- c('Blue_Tarp', 'Rooftop','Soil','Various_Non_Tarp','Vegetation')
+
+train$BlueTarp = as.factor(train$BlueTarp)
+levels(train$BlueTarp) <- c("1","0")
+
+lambdas = 10^seq(0, -4, by=-0.1)
+
+trControl = caret::trainControl(method='cv',
+                                number=10,
+                                savePredictions=TRUE, # required for thresholder
+                                classProbs=TRUE,      # required for thresholder
+                                allowParallel=TRUE)
+tuneGrid = expand.grid(lambda=lambdas, alpha=0)
+modelFit = caret::train(BlueTarp ~ ., data=subset(train, select = -c(Class)),
+                 method='glmnet',
+                 family='binomial',  # set the family for logistic regression
+                 thresh=0.25,        # set the threshold
+                 trControl=trControl,
+                 tuneGrid=tuneGrid)
+
+
+```
+
 
 
 
@@ -136,7 +184,61 @@ partimat(Class ~ ., data = data, method = "lda", plot.matrix = TRUE, col.correct
 
 ## QDA
 
+```{r qda, echo=TRUE, collapse = TRUE}
+
+
+
+
+
+
+qda.fit <- qda(BlueTarp~Red + Green + Blue, data=train)
+qda.fit 
+
+
+qda.pred <- tibble(prediction=predict(qda.fit, test)$class) %>% 
+  add_column(test %>% dplyr::select(BlueTarp)) 
+qda.pred %>% conf_mat(BlueTarp, prediction)
+
+
+qda.pred %>% mutate(correct = as.numeric(prediction==BlueTarp)) %>% 
+  dplyr::select(correct) %>% colMeans()
+
+
+```
+
 ## KNN
+
+```{r knn, echo=TRUE, collapse = TRUE}
+
+X.train <- train %>% dplyr::select(Red, Green, Blue) %>% 
+  as.matrix()
+X.test <- train %>% dplyr::select(Red, Green, Blue) %>% 
+  as.matrix()
+Y.train <- train %>% dplyr::select(BlueTarp) %>% 
+  as.matrix()
+set.seed(1)
+#knn.pred=knn(train.X,test.X,train.Direction,k=1)
+#table(knn.pred,Direction.2005)
+Y.test <- train %>% dplyr::select(BlueTarp)
+tibble(yhat = knn(X.train, X.test, Y.train, k=1), y = Y.test[['BlueTarp']]) %>%
+  conf_mat(y, yhat)
+
+
+tibble(yhat = knn(X.train, X.test, Y.train, k=1), y = Y.test[['BlueTarp']]) %>%
+  mutate(correct = as.numeric(yhat==y)) %>% 
+  dplyr::select(correct) %>% colMeans()
+
+
+tibble(yhat = knn(X.train, X.test, Y.train, k=3), y = Y.test[['BlueTarp']]) %>%
+  conf_mat(y, yhat)
+
+
+tibble(yhat = knn(X.train, X.test, Y.train, k=3), y = Y.test[['BlueTarp']]) %>%
+  mutate(correct = as.numeric(yhat==y)) %>% 
+  dplyr::select(correct) %>% colMeans()
+
+```
+
 
 ### Tuning Parameter $k$
 
@@ -144,11 +246,37 @@ How were tuning parameter(s) selected? What value is used? Plots/Tables/etc.
 
 ## Penalized Logistic Regression (ElasticNet)
 
+
+
+
+
+
 ### Tuning Parameters
 
-**NOTE: PART II same as above plus add Random Forest and SVM to Model Training.**
+
+
+
 
 ## Threshold Selection
+
+```{r threshold}
+
+#Given a tuned model, you can explore different threshold values using caret::thresholder
+
+probs <- seq(.1, 0.9, by = 0.02)
+
+ths <- thresholder(modelFit,
+                   threshold = probs,
+                   final = TRUE,
+                   statistics = "all")
+plot(ths$prob_threshold, ths$Accuracy)
+
+```
+
+
+
+
+
 
 
 # Results (Cross-Validation)
@@ -163,36 +291,4 @@ How were tuning parameter(s) selected? What value is used? Plots/Tables/etc.
 ### Conclusion \#2
 
 ### Conclusion \#3
-
-
-```{r, echo=FALSE}
-# knitr::knit_exit()    # ignore everything after this
-## Uncomment this line for Part I
-## You can remove the entire code chunk for Part II
-```
-
-
-# Hold-out Data / EDA
-
-Load data, explore data, etc. 
-
-
-# Results (Hold-Out)
-
-**Hold-Out Performance Table Here**
-
-
-# Final Conclusions
-
-### Conclusion \#1 
-
-### Conclusion \#2
-
-### Conclusion \#3
-
-### Conclusion \#4 
-
-### Conclusion \#5
-
-### Conclusion \#6
 
